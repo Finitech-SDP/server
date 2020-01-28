@@ -55,47 +55,66 @@ def read_socket(lock: threading.Lock, sock: socket.socket, convo_win):
     counter = 0
 
     while True:
-        data = sock.recv(1024)
-        if not data:
+        try:
+            msg = receive_message(sock)
+        except IOError:
             convo_win.standout()
             convo_win.addstr(b"\n---- DISCONNECTED ----\n")
             convo_win.standend()
             convo_win.refresh()
             return
 
-        messages = get_messages(data)
-
         lock.acquire(blocking=True)
         try:
-            for msg in messages:
-                convo_win.standout()
-                convo_win.addstr(b">> %3d " % (counter,))
-                convo_win.standend()
-                convo_win.addstr(b"\xe2\x94\x82 %s\n" % (msg,))
-                convo_win.refresh()
+            convo_win.standout()
+            convo_win.addstr(b">> %3d " % (counter,))
+            convo_win.standend()
+            convo_win.addstr(b"\xe2\x94\x82 %s\n" % (msg,))
+            convo_win.refresh()
 
-                counter += 1
+            counter += 1
         finally:
             lock.release()
 
 
-def get_messages(data: bytes) -> typing.List[bytes]:
-    messages = []
+def receive_message(sock: socket.socket) -> bytes:
+    type_header = recvall(sock, 1)
+    length_header = recvall(sock, 4)
+    length = int.from_bytes(length_header, byteorder="big")
+    msg = recvall(sock, length)
 
-    while data:
-        type = data[0]
-        length = int.from_bytes(data[1:5], byteorder="big")
-        msg = data[5:5+length]
-        messages.append(msg)
-        data = data[5+length:]
+    return msg
 
-    return messages
+
+def recvall(sock: socket.socket, n: int) -> bytes:
+    buffer = bytearray()
+
+    while len(buffer) < n:
+        r = sock.recv(n - len(buffer))
+        if not r:
+            raise IOError()
+
+        buffer += r
+
+    return buffer
+
 
 if __name__ == "__main__":
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    if len(sys.argv) >= 4 and sys.argv[3] == "listen":
+        s.bind((sys.argv[1], int(sys.argv[2])))
+        s.listen(1)
+        sock = s.accept()[0]
+        s.close()
+    else:
+        sock = s
+        sock.connect((sys.argv[1], int(sys.argv[2])))
+
+    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+
     try:
-        s.connect((sys.argv[1], int(sys.argv[2])))
-        main(s)
+        main(sock)
     except KeyboardInterrupt:
         pass
     finally:
