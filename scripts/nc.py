@@ -24,7 +24,9 @@ def main(s):
     #
     lock = threading.Lock()
 
-    read_line_th = threading.Thread(target=read_line, args=(lock, s, input_win, convo_win))
+    read_line_th = threading.Thread(
+        target=read_line, args=(lock, s, input_win, convo_win)
+    )
     read_socket_th = threading.Thread(target=read_socket, args=(lock, s, convo_win))
 
     read_line_th.start()
@@ -38,7 +40,9 @@ def read_line(lock: threading.Lock, sock: socket.socket, input_win, convo_win):
 
     while True:
         str = input_win.getstr(0, 0)
-        sock.sendall(b"%s%s%s" % (b"\x01", len(str).to_bytes(length=4, byteorder="big"), str))
+        sock.sendall(
+            b"%s%s%s" % (b"\x01", len(str).to_bytes(length=4, byteorder="big"), str)
+        )
 
         lock.acquire(blocking=True)
         try:
