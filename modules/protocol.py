@@ -1,7 +1,8 @@
+from typing import *
 import socket
 
 
-def send_message(sock: socket.socket, message: bytearray) -> None:
+def send_message(sock: socket.socket, message: Union[bytearray, bytes]) -> None:
     sock.sendall(
         b"%s%s%s" % (b"\x01", len(message).to_bytes(4, byteorder="big"), message)
     )
