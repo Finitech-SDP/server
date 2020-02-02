@@ -41,25 +41,27 @@ class TCPHandler(socketserver.BaseRequestHandler):
 
             logging.info(f"Received: {msg.decode('utf-8', errors='ignore')}")
 
-            power = 50
+            tokens = msg.split()
+            command = tokens[0]
+            power = int(tokens[1])
+            degrees = int(tokens[2])
             duration = 1000
-            degrees = 90
 
-            if msg == b"NORTH":
+            if command == b"N":
                 protocol.send_message(robot_sock, b"F %d %d" % (power, duration))
-            elif msg == b"SOUTH":
+            elif command == b"S":
                 protocol.send_message(robot_sock, b"B %d %d" % (power, duration))
-            elif msg == b"NORTH EAST":
+            elif command == b"NE":
                 protocol.send_message(robot_sock, b"FR %d %d" % (power, duration))
-            elif msg == b"NORTH WEST":
+            elif command == b"NW":
                 protocol.send_message(robot_sock, b"FL %d %d" % (power, duration))
-            elif msg == b"SOUTH EAST":
+            elif command == b"SE":
                 protocol.send_message(robot_sock, b"BR %d %d" % (power, duration))
-            elif msg == b"SOUTH WEST":
+            elif command == b"SW":
                 protocol.send_message(robot_sock, b"BL %d %d" % (power, duration))
-            elif msg == b'ANTI CLOCKWISE':
+            elif command == b'AR':
                 protocol.send_message(robot_sock, b"RA %d" % (degrees,))
-            elif msg == b"CLOCKWISE":
+            elif command == b"CR":
                 protocol.send_message(robot_sock, b"RC %d" % (degrees,))
             else:
                 logging.warning(f"Unknown Command: {msg}")
