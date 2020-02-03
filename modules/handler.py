@@ -19,57 +19,65 @@ class TCPHandler(socketserver.BaseRequestHandler):
         logging.info(f"Client at {self.client_host}:{self.client_port} disconnected")
 
     def handle(self) -> None:
-        logging.info("Excepting CONNECT command...")
-        msg = protocol.receive_message(sock=self.request)
-        logging.debug(f"Received {msg}")
+        robot_sock = self.wait_until_connected_to_robot()
 
-        msg = msg.decode("ascii")
+        try:
+            while True:
+                try:
+                    msg = protocol.receive_message(sock=self.request)
+                except BrokenPipeError:
+                    break  # Peer has closed the connection
 
-        command, host, port = msg.split()
+                logging.debug(f"Received: {msg.decode('ascii', errors='ignore')}")
+
+                tokens = msg.split()
+                command = tokens[0]
+                power = int(tokens[1])
+                degrees = int(tokens[2])
+                duration = 1000
+
+                # TODO: put either in EV3 or Android App
+                if command == b"N":
+                    protocol.send_message(robot_sock, b"F %d %d" % (power, duration))
+                elif command == b"S":
+                    protocol.send_message(robot_sock, b"B %d %d" % (power, duration))
+                elif command == b"NE":
+                    protocol.send_message(robot_sock, b"FR %d %d" % (power, duration))
+                elif command == b"NW":
+                    protocol.send_message(robot_sock, b"FL %d %d" % (power, duration))
+                elif command == b"SE":
+                    protocol.send_message(robot_sock, b"BR %d %d" % (power, duration))
+                elif command == b"SW":
+                    protocol.send_message(robot_sock, b"BL %d %d" % (power, duration))
+                elif command == b"AR":
+                    protocol.send_message(robot_sock, b"RA %d" % (degrees,))
+                elif command == b"CR":
+                    protocol.send_message(robot_sock, b"RC %d" % (degrees,))
+                else:
+                    logging.warning(f"Unknown Command: {msg}")
+                    continue
+
+                protocol.send_message(sock=self.request, message=msg)
+        finally:
+            robot_sock.close()
+
+    def wait_until_connected_to_robot(self) -> socket.socket:
+        logging.debug("Waiting for CONNECT command...")
+
+        connect_msg = protocol.receive_message(sock=self.request).decode(
+            "ascii", errors="ignore"
+        )
+        logging.debug(f"Received {connect_msg}")
+
+        command, robot_host, robot_port = connect_msg.split()
         assert command == "CONNECT"
-        port = int(port)
 
-        logging.info(f"Connecting to {host}:{port}")
+        logging.info(
+            f"Connecting client {self.client_host}:{self.client_port} "
+            f"to robot {robot_host}:{robot_port}"
+        )
 
-        robot_sock = self.easy_connect(host, port)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect((robot_host, int(robot_port)))
 
-        while True:
-            try:
-                msg = protocol.receive_message(sock=self.request)
-            except BrokenPipeError:
-                break  # Peer has closed the connection
-
-            logging.info(f"Received: {msg.decode('utf-8', errors='ignore')}")
-
-            tokens = msg.split()
-            command = tokens[0]
-            power = int(tokens[1])
-            degrees = int(tokens[2])
-            duration = 1000
-
-            if command == b"N":
-                protocol.send_message(robot_sock, b"F %d %d" % (power, duration))
-            elif command == b"S":
-                protocol.send_message(robot_sock, b"B %d %d" % (power, duration))
-            elif command == b"NE":
-                protocol.send_message(robot_sock, b"FR %d %d" % (power, duration))
-            elif command == b"NW":
-                protocol.send_message(robot_sock, b"FL %d %d" % (power, duration))
-            elif command == b"SE":
-                protocol.send_message(robot_sock, b"BR %d %d" % (power, duration))
-            elif command == b"SW":
-                protocol.send_message(robot_sock, b"BL %d %d" % (power, duration))
-            elif command == b'AR':
-                protocol.send_message(robot_sock, b"RA %d" % (degrees,))
-            elif command == b"CR":
-                protocol.send_message(robot_sock, b"RC %d" % (degrees,))
-            else:
-                logging.warning(f"Unknown Command: {msg}")
-                continue
-
-            protocol.send_message(sock=self.request, message=msg)
-
-    def easy_connect(self, host, port):
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.connect((host, port))
-        return s
+        return sock
