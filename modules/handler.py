@@ -20,6 +20,7 @@ class TCPHandler(socketserver.BaseRequestHandler):
 
     def handle(self) -> None:
         robot_sock = self.wait_until_connected_to_robot()
+        protocol.send_message(self.request, message=b"CONNECTED")
 
         try:
             while True:
@@ -29,35 +30,8 @@ class TCPHandler(socketserver.BaseRequestHandler):
                     break  # Peer has closed the connection
 
                 logging.debug(f"Received: {msg.decode('ascii', errors='ignore')}")
-
-                tokens = msg.split()
-                command = tokens[0]
-                power = int(tokens[1])
-                degrees = int(tokens[2])
-                duration = 1000
-
-                # TODO: put either in EV3 or Android App
-                if command == b"N":
-                    protocol.send_message(robot_sock, b"F %d %d" % (power, duration))
-                elif command == b"S":
-                    protocol.send_message(robot_sock, b"B %d %d" % (power, duration))
-                elif command == b"NE":
-                    protocol.send_message(robot_sock, b"FR %d %d" % (power, duration))
-                elif command == b"NW":
-                    protocol.send_message(robot_sock, b"FL %d %d" % (power, duration))
-                elif command == b"SE":
-                    protocol.send_message(robot_sock, b"BR %d %d" % (power, duration))
-                elif command == b"SW":
-                    protocol.send_message(robot_sock, b"BL %d %d" % (power, duration))
-                elif command == b"AR":
-                    protocol.send_message(robot_sock, b"RA %d" % (degrees,))
-                elif command == b"CR":
-                    protocol.send_message(robot_sock, b"RC %d" % (degrees,))
-                else:
-                    logging.warning(f"Unknown Command: {msg}")
-                    continue
-
-                protocol.send_message(sock=self.request, message=msg)
+                protocol.send_message(sock=robot_sock, message=msg)
+                # protocol.send_message(sock=self.request, message=msg)
         finally:
             robot_sock.close()
 
@@ -79,5 +53,7 @@ class TCPHandler(socketserver.BaseRequestHandler):
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((robot_host, int(robot_port)))
+
+        logging.info(f"Connected to robot {robot_host}:{robot_port}")
 
         return sock

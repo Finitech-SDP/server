@@ -10,6 +10,7 @@ logging.basicConfig(
 
 
 def main() -> None:
+    socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer(
         (config.HOST, config.PORT), handler.TCPHandler
     ) as server:

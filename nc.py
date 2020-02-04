@@ -63,6 +63,13 @@ def print_curses_disconnect(convo_win) -> None:
     convo_win.refresh()
 
 
+def print_curses_connect(convo_win, host, port) -> None:
+    convo_win.standout()
+    convo_win.addstr(b"---- CONNECTED %s:%d ----\n\n" % (host, port))
+    convo_win.standend()
+    convo_win.refresh()
+
+
 def start_curses_windows() -> Tuple[Any, Any]:
     root_win = curses.initscr()
     root_win.clear()
@@ -100,6 +107,9 @@ def main() -> None:
 
     try:
         convo_win, input_win = start_curses_windows()
+
+        if sys.argv[3] == "listen":
+            print_curses_connect(convo_win, sock.getpeername()[0].encode("ascii"), sock.getpeername()[1])
 
         with futures.ThreadPoolExecutor(max_workers=2) as executor:
             executor.submit(read_line, sock, input_win, convo_win),
