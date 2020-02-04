@@ -6,8 +6,10 @@ from concurrent import futures
 from typing import Any, Tuple
 
 from modules import protocol
+from modules.util import get_ip
 
 LOCK = threading.Lock()
+disconnected = False
 
 
 def read_line(sock: socket.socket, input_win, convo_win) -> None:
@@ -15,6 +17,8 @@ def read_line(sock: socket.socket, input_win, convo_win) -> None:
 
     while True:
         msg = input_win.getstr(0, 0)
+        if disconnected:
+            return
 
         try:
             protocol.send_message(sock, msg)
@@ -31,12 +35,14 @@ def read_line(sock: socket.socket, input_win, convo_win) -> None:
 
 
 def read_socket(sock: socket.socket, convo_win) -> None:
+    global disconnected
     counter = 0
 
     while True:
         try:
             msg = protocol.receive_message(sock)
         except BrokenPipeError:
+            disconnected = True
             print_curses_disconnect(convo_win)
             return
 
@@ -78,8 +84,12 @@ def main() -> None:
 
     # TODO: use argparse
     if len(sys.argv) >= 4 and sys.argv[3] == "listen":
-        s.bind((sys.argv[1], int(sys.argv[2])))
+        port = int(sys.argv[2])
+        s.bind((sys.argv[1], port))
         s.listen(1)
+
+        print(f"Listening on {get_ip()}:{port}")
+
         sock = s.accept()[0]
         s.close()
     else:
