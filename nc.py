@@ -108,7 +108,7 @@ def main() -> None:
     try:
         convo_win, input_win = start_curses_windows()
 
-        if sys.argv[3] == "listen":
+        if len(sys.argv) >= 4 and sys.argv[3] == "listen":
             print_curses_connect(convo_win, sock.getpeername()[0].encode("ascii"), sock.getpeername()[1])
 
         with futures.ThreadPoolExecutor(max_workers=2) as executor:
