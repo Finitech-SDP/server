@@ -1,8 +1,10 @@
 import logging
 import socket
 import socketserver
+import time
 
 from modules import protocol
+from modules.planning import deliberate, translate
 
 
 class TCPHandler(socketserver.BaseRequestHandler):
@@ -30,8 +32,20 @@ class TCPHandler(socketserver.BaseRequestHandler):
                     break  # Peer has closed the connection
 
                 logging.debug(f"Received: {msg.decode('ascii', errors='ignore')}")
-                protocol.send_message(sock=robot_sock, message=msg)
-                # protocol.send_message(sock=self.request, message=msg)
+
+                if msg.startswith(b"AUTO"):
+                    AUTO, ROBOT, robot_row, robot_col, CAR, car_row, car_col, mode = msg.split()
+                    if not (AUTO == b"AUTO" and ROBOT == b"ROBOT" and CAR == b"CAR" and mode in [b"DELIVER", b"PARK"]):
+                        logging.warning(f"Unknown AUTO message: {msg.decode('ascii', errors='ignore')}")
+                        continue
+
+                    plan = deliberate((int(robot_row), int(robot_col)), (int(car_row), int(car_col), mode))
+                    commands = translate(plan)
+                    for command in commands:
+                        protocol.send_message(sock=robot_sock, message=command)
+                        time.sleep(6)  # FIXME: cannot react to STOP commands while sleeping!
+                else:
+                    protocol.send_message(sock=robot_sock, message=msg)
         finally:
             robot_sock.close()
 
