@@ -45,6 +45,13 @@ class TCPHandler(socketserver.BaseRequestHandler):
             return
 
         plan = deliberate((int(robot_row), int(robot_col)), (int(car_row), int(car_col), mode))
+        if plan is None:
+            logging.warning("NO PLAN FOUND")
+            return
+        elif len(plan) == 0:
+            logging.warning("PLAN IS EMPTY [], what??")
+            return
+
         commands = translate(plan)
         for command in commands:
             protocol.send_message(self.robot_sock, message=command)

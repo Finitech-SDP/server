@@ -1,11 +1,11 @@
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
 import requests
 
 from config import PLANNER_HOST
 
 
-def deliberate(robot_tuple: Tuple[int, int], car_tuple: Tuple[int, int, str]) -> List[List[str]]:
+def deliberate(robot_tuple: Tuple[int, int], car_tuple: Tuple[int, int, str]) -> Optional[List[List[str]]]:
     robot_row, robot_col = robot_tuple
     car_row, car_col, mode = car_tuple
 
@@ -19,6 +19,9 @@ def deliberate(robot_tuple: Tuple[int, int], car_tuple: Tuple[int, int, str]) ->
     answer = requests.get(
         f"http://{PLANNER_HOST}/plan?robot={robot_row},{robot_col}&{car_param}={car_row},{car_col}"
     ).json()
+
+    if answer["plan"] is None:
+        return None
 
     plan = []
     for step in answer["plan"]:  # type: str
