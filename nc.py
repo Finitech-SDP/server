@@ -92,6 +92,9 @@ def main() -> None:
     # TODO: use argparse
     if len(sys.argv) >= 4 and sys.argv[3] == "listen":
         port = int(sys.argv[2])
+        # Fixes annoying OSError: [Errno 98] Address already in use
+        # See https://stackoverflow.com/a/6380198/4466589
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         s.bind((sys.argv[1], port))
         s.listen(1)
 
