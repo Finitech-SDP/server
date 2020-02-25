@@ -12,7 +12,7 @@ def deliberate(robot_tuple: Tuple[int, int], car_tuple: Tuple[int, int, str]) ->
     if mode == b"PARK":
         car_param = "parkCar"
     elif mode == b"DELIVER":
-        car_param = b"deliverCar"
+        car_param = "deliverCar"
     else:
         raise Exception(f"Unknown mode: {mode}")
 
@@ -41,6 +41,11 @@ def translate(plan: List[List[str]]) -> List[bytes]:
         "PICKUP-CAR-RIGHTWARDS": [b"B  "],
         "PARK-CAR-LEFTWARDS": [b"F  "],
         "PARK-CAR-RIGHTWARDS": [b"B  "],
+        "RETRIEVE-CAR-LEFTWARDS": [b"F  "],
+        "RETRIEVE-CAR-RIGHTWARDS": [b"B  "],
+        "DROPOFF-CAR-LEFTWARDS": [b"F  "],
+        "DROPOFF-CAR-RIGHTWARDS": [b"B  "],
+
     }  # type: Dict[str, List[bytes]]
 
     commands = []
