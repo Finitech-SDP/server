@@ -8,6 +8,7 @@ verify_ssl = true
 [packages]
 black = "*"
 requests = "*"
+netifaces = "*"
 
 [requires]
 python_version = "3.6"

@@ -4,13 +4,14 @@ import socketserver
 
 from modules import protocol
 from modules.planning import deliberate, translate
+from modules.tcpserver import MyTCPServer
 
 
 class TCPHandler(socketserver.BaseRequestHandler):
-    def __init__(self, request, client_address, server) -> None:
+    def __init__(self, request, client_address, server: MyTCPServer) -> None:
         self.client_host = client_address[0]
         self.client_port = client_address[1]
-
+        self.server = server  # For type hinting
         super().__init__(request, client_address, server)
 
     def setup(self):
