@@ -1,41 +1,117 @@
+import asyncio
+import enum
 import logging
-import socket
-import socketserver
+import json
+from typing import Any, Dict, List, Optional
 
-from modules import protocol
-from modules.planning import deliberate, translate
-from modules.tcpserver import MyTCPServer
+from modules.tcpserver import Robot
 
 
-class TCPHandler(socketserver.BaseRequestHandler):
-    def __init__(self, request, client_address, server: MyTCPServer) -> None:
-        self.client_host = client_address[0]
-        self.client_port = client_address[1]
-        self.server = server  # For type hinting
-        super().__init__(request, client_address, server)
+class TCPHandler:
+    @enum.unique
+    class State(enum.Enum):
+        START = enum.auto()
+        ROBOT = enum.auto()
+        APP = enum.auto()
 
-    def setup(self):
-        logging.info(f"Client at {self.client_host}:{self.client_host} connected")
+    def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, robots: Dict[str, Robot]):
+        self.reader = reader
+        self.writer = writer
+        self.robots = robots
+        self.robot = None
+        self.remote_host, self.remote_port = self.writer.get_extra_info("peername")
+        self.state = self.State.START
 
-    def finish(self):
-        logging.info(f"Client at {self.client_host}:{self.client_port} disconnected")
+    async def run(self):
+        logging.info("New TCP Connection: %s:%d", self.remote_host, self.remote_port)
 
-    def handle(self) -> None:
-        self.robot_sock = self.wait_until_connected_to_robot()
-        protocol.send_message(self.request, message=b"CONNECTED")
+        while True:
+            try:
+                msg = await self.receive_json_message()
+                await self.handle_message(msg)
+            except asyncio.streams.IncompleteReadError:
+                logging.warning("Peer disconnected")
+                break  # Peer has closed the connection
 
-        try:
-            while True:
-                try:
-                    msg = protocol.receive_message(sock=self.request)
-                    logging.debug(f"Received: {msg.decode('ascii', errors='ignore')}")
-                    self.handle_message(msg)
-                except BrokenPipeError:
-                    break  # Peer has closed the connection
-        finally:
-            self.robot_sock.close()
+    async def handle_message(self, message: Dict[str, Any]) -> None:
+        state_handlers = {
+            self.State.START: self.handle_START_message,
+            self.State.APP: self.handle_APP_message,
+            self.State.ROBOT: self.handle_ROBOT_message,
+        }
+        handler = state_handlers[self.state]
+        await handler(message["TAG"], message["DATA"])
 
-    def handle_message(self, msg: bytes):
+    async def handle_START_message(self, tag: str, data: Dict[str, Any]):
+        if tag != "IAM":
+            logging.warning("First message is not IAM but %s", tag)
+            return
+
+        if data["me"] == "ROBOT":
+            await self.send_json_message({
+                "TAG": "IAM-ACK",
+                "DATA": {}
+            })
+            robot = Robot(data["id"], "Bender", self)
+            self.robots[robot.id] = robot
+            self.state = self.State.ROBOT
+            print("ROBOT added!", id(self), self.robots)
+        elif data["me"] == "APP":
+            await self.send_json_message({
+                "TAG": "IAM-ACK",
+                "DATA": {}
+            })
+            self.state = self.State.APP
+        else:
+            logging.warning("Unknown IAM me: %s", data["me"])
+
+    async def handle_APP_message(self, tag: str, data: Dict[str, Any]):
+        tag_handlers = {
+            "LIST-ROBOTS": self.handle_APP_LIST_ROBOTS,
+            "SELECT-ROBOT": self.handle_APP_SELECT_ROBOT,
+            "RELAY": self.handle_APP_RELAY,
+        }
+        handler = tag_handlers[tag]
+        await handler(data)
+
+    async def handle_APP_LIST_ROBOTS(self, data: Dict[str, Any]):
+        print(">>>", id(self), self.robots)
+        await self.send_json_message({
+            "TAG": "LIST-ROBOTS-RES",
+            "DATA": {
+                "robots": [{
+                    "id": robot.id,
+                    "name": robot.name,
+                    "isControlled": robot.controller_handler is not None
+                } for robot in self.robots.values()]
+            }
+        })
+
+    async def handle_APP_SELECT_ROBOT(self, data: Dict[str, Any]):
+        robot_id = data["id"]
+        robot = self.robots[robot_id]
+        if robot.controller_handler is not None:
+            robot.controller_handler.robot = None
+
+        self.robot = robot
+        robot.controller_handler = self
+        await self.send_json_message({
+            "TAG": "SELECT-ROBOT-ACK",
+            "DATA": {}
+        })
+
+    async def handle_APP_RELAY(self, data: Dict[str, Any]):
+        await self.robot.handler.send_message(data["message"].encode("ascii"))
+        await self.send_json_message({
+            "TAG": "RELAY-ACK",
+            "DATA": {},
+        })
+
+    async def handle_ROBOT_message(self, tag: str, data: Dict[str, Any]):
+        raise NotImplementedError()
+
+    """
+    async def handle_message(self, msg: Dict[str, Any]):
         if not msg.startswith(b"AUTO"):
             protocol.send_message(sock=self.robot_sock, message=msg)
             return
@@ -84,3 +160,32 @@ class TCPHandler(socketserver.BaseRequestHandler):
         logging.info(f"Connected to robot {robot_host}:{robot_port}")
 
         return sock
+    """
+
+    async def send_json_message(self, message: Dict[str, Any]) -> None:
+        await self.send_message(json.dumps(message).encode("ascii"))
+
+    async def send_message(self, message: bytes) -> None:
+        self.writer.write(b"%s%s%s" % (b"\x01", len(message).to_bytes(4, byteorder="big"), message))
+        await self.writer.drain()
+
+    async def receive_json_message(self, timeout: Optional[float] = None) -> Optional[Dict[str, Any]]:
+        msg = await self.receive_message(timeout)
+        return json.loads(msg.decode("ascii"))
+
+    async def receive_message(self, timeout: Optional[float] = None) -> Optional[bytes]:
+        """
+        :param timeout: Timeout until the first byte, NOT THE WHOLE MESSAGE.
+        :return: The message or None on timeout.
+        """
+        assert timeout is None or timeout > 0
+
+        try:
+            type_header = await asyncio.wait_for(self.reader.readexactly(1), timeout=timeout)
+        except asyncio.TimeoutError:
+            return None
+
+        length_header = await self.reader.readexactly(4)
+        length = int.from_bytes(length_header, byteorder="big")
+        msg = await self.reader.readexactly(length)
+        return msg

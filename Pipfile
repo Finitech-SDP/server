@@ -9,6 +9,7 @@ verify_ssl = true
 black = "*"
 requests = "*"
 netifaces = "*"
+websockets = "*"
 
 [requires]
 python_version = "3.6"

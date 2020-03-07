@@ -6,8 +6,7 @@ import requests
 from config import INTERFACES
 
 
-def update_dynamic_dns():
-    my_ip, _ = get_ip_interface()
+def update_dynamic_dns(my_ip: str):
     res = requests.get("https://www.duckdns.org/update", params={
         "domains": "server-finitech",
         "token": "f3c961e4-f42f-457f-8afe-961aed9636e7",

@@ -1,5 +1,6 @@
 HOST = "0.0.0.0"
-PORT = 7777
+WS_PORT = 8888
+TCP_PORT = 7777
 PLANNER_HOST = "127.0.0.1:8000"
 # Interfaces are tried in order!
 #   tun0:

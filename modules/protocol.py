@@ -1,6 +1,5 @@
 from typing import Union, Optional
 import socket
-import time
 
 
 def send_message(sock: socket.socket, message: Union[bytearray, bytes]) -> None:

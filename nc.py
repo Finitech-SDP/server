@@ -6,7 +6,7 @@ from concurrent import futures
 from typing import Any, Tuple
 
 from modules import protocol
-from modules.util import get_ip
+from modules.util import get_ip_interface
 
 LOCK = threading.Lock()
 disconnected = False
@@ -98,7 +98,8 @@ def main() -> None:
         s.bind((sys.argv[1], port))
         s.listen(1)
 
-        print(f"Listening on {get_ip()}:{port}")
+        ip, interface = get_ip_interface()
+        print(f"Listening on {ip}:{port} using {interface}")
 
         sock = s.accept()[0]
         s.close()

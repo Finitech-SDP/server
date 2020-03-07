@@ -1,5 +1,6 @@
-from typing import List, Tuple
-import socketserver
+from typing import Optional, Tuple
+from uuid import uuid4
+import modules.handler
 
 
 class App:
@@ -8,14 +9,10 @@ class App:
         self.name = name
 
 
+
 class Robot:
-    def __init__(self, addr: Tuple[str, int], name: str):
-        self.addr = addr
+    def __init__(self, id_: str, name: str, handler: "modules.handler.TCPHandler"):
+        self.id = id_
         self.name = name
-
-
-class MyTCPServer(socketserver.TCPServer):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.apps = []  # type: List[App]
-        self.robots = []  # type: List[Robot]
+        self.handler = handler
+        self.controller_handler = None  # type: Optional["modules.handler.TCPHandler"]
