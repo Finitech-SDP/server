@@ -1,10 +1,12 @@
 import asyncio
 import logging
+from typing import Dict, List
 
 import websockets
 
 import config
 from modules import handler, util
+from modules.tcpserver import Robot
 
 local_ip, interface = None, None
 
@@ -12,16 +14,30 @@ logging.basicConfig(
     level=logging.DEBUG, format="%(asctime)s %(levelname)s  %(message)s",
 )
 
-robots = {}
+logging.getLogger("websockets").setLevel(logging.WARN)
+
+
+class Coordinator:
+    def __init__(self):
+        self.robots = {}  # type: Dict[str, Robot]
+        self.websockets = []  # type: List[websockets.WebSocketServerProtocol]
+
+
+coordinator = Coordinator()
+
 
 async def tcp_handler_entrypoint(reader, writer):
-    tcp_handler = handler.TCPHandler(reader, writer, robots)
+    tcp_handler = handler.TCPHandler(reader, writer, coordinator)
     await tcp_handler.run()
 
 
-async def ws_handler_entrypoint(websocket, path):
-    async for message in websocket:
-        await websocket.send(message)
+async def ws_handler_entrypoint(websocket: websockets.WebSocketServerProtocol, path):
+    coordinator.websockets.append(websocket)
+    # websockets library closes the connection when the handler (i.e. this function)
+    # exits so this prevents that.
+    # See https://websockets.readthedocs.io/en/stable/faq.html#how-do-i-close-a-connection-properly
+    await websocket.wait_closed()
+    coordinator.websockets.remove(websocket)
 
 
 async def ws_main():

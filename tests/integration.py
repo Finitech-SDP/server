@@ -18,7 +18,7 @@ class MyTestCase(unittest.TestCase):
         self.robot_socket = socket.create_connection((self.HOST, self.PORT))
         self.app_socket = socket.create_connection((self.HOST, self.PORT))
 
-    def test_something(self):
+    def test_relay_ascii(self):
         app_socket = self.app_socket
         robot_socket = self.robot_socket
         robot_id = str(uuid4())
@@ -69,7 +69,7 @@ class MyTestCase(unittest.TestCase):
 
         # 5) App asks for an ASCII message to be relayed
         self.__send_json_message(app_socket, {
-            "TAG": "RELAY",
+            "TAG": "RELAY-ASCII",
             "DATA": {
                 "message": "F  ",
             }
@@ -78,7 +78,7 @@ class MyTestCase(unittest.TestCase):
         self.assertEqual(b"F  ", robot_msg)
         ack = self.__receive_json_message(app_socket)
         self.assertEqual({
-            "TAG": "RELAY-ACK",
+            "TAG": "RELAY-ASCII-ACK",
             "DATA": {},
         }, ack)
 

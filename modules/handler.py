@@ -5,7 +5,8 @@ import json
 from typing import Any, Dict, List, Optional
 
 from modules.tcpserver import Robot
-
+from modules.planning import deliberate, translate
+from main import Coordinator
 
 class TCPHandler:
     @enum.unique
@@ -13,11 +14,12 @@ class TCPHandler:
         START = enum.auto()
         ROBOT = enum.auto()
         APP = enum.auto()
+        DISCONNECTED = enum.auto()
 
-    def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, robots: Dict[str, Robot]):
+    def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, coordinator: Coordinator):
         self.reader = reader
         self.writer = writer
-        self.robots = robots
+        self.coordinator = coordinator
         self.robot = None
         self.remote_host, self.remote_port = self.writer.get_extra_info("peername")
         self.state = self.State.START
@@ -30,6 +32,7 @@ class TCPHandler:
                 msg = await self.receive_json_message()
                 await self.handle_message(msg)
             except asyncio.streams.IncompleteReadError:
+                self.state = self.State.DISCONNECTED
                 logging.warning("Peer disconnected")
                 break  # Peer has closed the connection
 
@@ -53,9 +56,8 @@ class TCPHandler:
                 "DATA": {}
             })
             robot = Robot(data["id"], "Bender", self)
-            self.robots[robot.id] = robot
+            self.coordinator.robots[robot.id] = robot
             self.state = self.State.ROBOT
-            print("ROBOT added!", id(self), self.robots)
         elif data["me"] == "APP":
             await self.send_json_message({
                 "TAG": "IAM-ACK",
@@ -69,13 +71,13 @@ class TCPHandler:
         tag_handlers = {
             "LIST-ROBOTS": self.handle_APP_LIST_ROBOTS,
             "SELECT-ROBOT": self.handle_APP_SELECT_ROBOT,
-            "RELAY": self.handle_APP_RELAY,
+            "RELAY-ASCII": self.handle_APP_RELAY_ASCII,
+            "AUTO": self.handle_APP_AUTO,
         }
         handler = tag_handlers[tag]
         await handler(data)
 
     async def handle_APP_LIST_ROBOTS(self, data: Dict[str, Any]):
-        print(">>>", id(self), self.robots)
         await self.send_json_message({
             "TAG": "LIST-ROBOTS-RES",
             "DATA": {
@@ -83,13 +85,13 @@ class TCPHandler:
                     "id": robot.id,
                     "name": robot.name,
                     "isControlled": robot.controller_handler is not None
-                } for robot in self.robots.values()]
+                } for robot in self.coordinator.robots.values()]
             }
         })
 
     async def handle_APP_SELECT_ROBOT(self, data: Dict[str, Any]):
         robot_id = data["id"]
-        robot = self.robots[robot_id]
+        robot = self.coordinator.robots[robot_id]
         if robot.controller_handler is not None:
             robot.controller_handler.robot = None
 
@@ -100,26 +102,34 @@ class TCPHandler:
             "DATA": {}
         })
 
-    async def handle_APP_RELAY(self, data: Dict[str, Any]):
+    async def handle_APP_RELAY_ASCII(self, data: Dict[str, Any]):
+        if self.robot is None:
+            await self.send_json_message({
+                "TAG": "RELAY-ASCII-NACK",
+                "DATA": {
+                    "error": "no robot is selected",
+                }
+            })
+            return
+
+        # This is an example of emitting websocket events for Theodor
+        for ws in self.coordinator.websockets:
+            try:
+                await ws.send(data["message"] + "\n")
+            except:
+                logging.exception("WebSocket send exception")
+                continue
+
         await self.robot.handler.send_message(data["message"].encode("ascii"))
         await self.send_json_message({
-            "TAG": "RELAY-ACK",
+            "TAG": "RELAY-ASCII-ACK",
             "DATA": {},
         })
 
-    async def handle_ROBOT_message(self, tag: str, data: Dict[str, Any]):
-        raise NotImplementedError()
-
-    """
-    async def handle_message(self, msg: Dict[str, Any]):
-        if not msg.startswith(b"AUTO"):
-            protocol.send_message(sock=self.robot_sock, message=msg)
-            return
-
-        AUTO, ROBOT, robot_row, robot_col, CAR, car_row, car_col, mode = msg.split()
-        if not (AUTO == b"AUTO" and ROBOT == b"ROBOT" and CAR == b"CAR" and mode in [b"DELIVER", b"PARK"]):
-            logging.warning(f"Unknown AUTO message: {msg.decode('ascii', errors='ignore')}")
-            return
+    async def handle_APP_AUTO(self, data: Dict[str, Any]):
+        robot_row, robot_col = data["robotPosition"]["row"], data["robotPosition"]["column"]
+        car_row, car_col = data["carPosition"]["row"], data["carPosition"]["column"]
+        mode = data["mode"]
 
         plan = deliberate((int(robot_row), int(robot_col)), (int(car_row), int(car_col), mode))
         if plan is None:
@@ -131,36 +141,14 @@ class TCPHandler:
 
         commands = translate(plan)
         for command in commands:
-            protocol.send_message(self.robot_sock, message=command)
-            msg_maybe = protocol.receive_message(self.request, timeout=6)
+            self.robot.handler.send_message(command)
+            msg_maybe = await self.receive_json_message(timeout=6)
             if msg_maybe is not None:
-                print("CRYING RN", msg_maybe)
-                self.handle_message(msg_maybe)
+                await self.handle_message(msg_maybe)
                 return
 
-    def wait_until_connected_to_robot(self) -> socket.socket:
-        logging.debug("Waiting for CONNECT command...")
-
-        connect_msg = protocol.receive_message(sock=self.request).decode(
-            "ascii", errors="ignore"
-        )
-        logging.debug(f"Received {connect_msg}")
-
-        command, robot_host, robot_port = connect_msg.split()
-        assert command == "CONNECT"
-
-        logging.info(
-            f"Connecting client {self.client_host}:{self.client_port} "
-            f"to robot {robot_host}:{robot_port}"
-        )
-
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect((robot_host, int(robot_port)))
-
-        logging.info(f"Connected to robot {robot_host}:{robot_port}")
-
-        return sock
-    """
+    async def handle_ROBOT_message(self, tag: str, data: Dict[str, Any]):
+        raise NotImplementedError()
 
     async def send_json_message(self, message: Dict[str, Any]) -> None:
         await self.send_message(json.dumps(message).encode("ascii"))
