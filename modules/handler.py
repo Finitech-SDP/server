@@ -8,6 +8,7 @@ from modules.tcpserver import Robot
 from modules.planning import deliberate, translate
 from main import Coordinator
 
+
 class TCPHandler:
     @enum.unique
     class State(enum.Enum):
@@ -55,7 +56,7 @@ class TCPHandler:
                 "TAG": "IAM-ACK",
                 "DATA": {}
             })
-            robot = Robot(data["id"], "Bender", self)
+            robot = Robot(data["id"], data["name"], self)
             self.coordinator.robots[robot.id] = robot
             self.state = self.State.ROBOT
         elif data["me"] == "APP":
@@ -130,6 +131,15 @@ class TCPHandler:
         robot_row, robot_col = data["robotPosition"]["row"], data["robotPosition"]["column"]
         car_row, car_col = data["carPosition"]["row"], data["carPosition"]["column"]
         mode = data["mode"]
+
+        if self.robot is None:
+            await self.send_json_message({
+                "TAG": "AUTO-NACK",
+                "DATA": {
+                    "error": "no robot is selected"
+                }
+            })
+            return
 
         plan = deliberate((int(robot_row), int(robot_col)), (int(car_row), int(car_col), mode))
         if plan is None:
