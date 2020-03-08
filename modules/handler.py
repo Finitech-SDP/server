@@ -141,13 +141,19 @@ class TCPHandler:
 
         commands = translate(plan)
         for command in commands:
-            self.robot.handler.send_message(command)
+            await self.robot.handler.send_message(command)
             msg_maybe = await self.receive_json_message(timeout=6)
             if msg_maybe is not None:
                 await self.handle_message(msg_maybe)
                 return
 
+        await self.send_json_message({
+            "TAG": "AUTO-ACK",
+            "DATA": {},
+        })
+
     async def handle_ROBOT_message(self, tag: str, data: Dict[str, Any]):
+        print("ROBOT SAID", tag, data)
         raise NotImplementedError()
 
     async def send_json_message(self, message: Dict[str, Any]) -> None:
@@ -159,7 +165,10 @@ class TCPHandler:
 
     async def receive_json_message(self, timeout: Optional[float] = None) -> Optional[Dict[str, Any]]:
         msg = await self.receive_message(timeout)
-        return json.loads(msg.decode("ascii"))
+        if msg is None:
+            return None
+        else:
+            return json.loads(msg.decode("ascii"))
 
     async def receive_message(self, timeout: Optional[float] = None) -> Optional[bytes]:
         """

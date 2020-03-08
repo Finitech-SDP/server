@@ -22,7 +22,6 @@ def receive_message(sock: socket.socket, timeout: Optional[float] = None) -> Opt
         sock.settimeout(timeout)
         try:
             type_header = recv_all(sock, 1)
-            print("wow, ", type_header)
         except socket.timeout:
             print("TIMEOUT!")
             return None

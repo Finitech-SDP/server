@@ -54,7 +54,7 @@ async def tcp_main():
 def main():
     global local_ip, interface
     local_ip, interface = util.get_ip_interface()
-    util.update_dynamic_dns(local_ip)
+    # util.update_dynamic_dns(local_ip)
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(asyncio.gather(

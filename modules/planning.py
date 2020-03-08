@@ -9,9 +9,9 @@ def deliberate(robot_tuple: Tuple[int, int], car_tuple: Tuple[int, int, str]) ->
     robot_row, robot_col = robot_tuple
     car_row, car_col, mode = car_tuple
 
-    if mode == b"PARK":
+    if mode == "PARK":
         car_param = "parkCar"
-    elif mode == b"DELIVER":
+    elif mode == "DELIVER":
         car_param = "deliverCar"
     else:
         raise Exception(f"Unknown mode: {mode}")
