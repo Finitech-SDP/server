@@ -7,9 +7,10 @@ verify_ssl = true
 
 [packages]
 black = "*"
-requests = "*"
 netifaces = "*"
 websockets = "*"
+aiohttp = "*"
+requests = "*"
 
 [requires]
 python_version = "3.6"

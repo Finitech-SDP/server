@@ -1,26 +1,29 @@
 from typing import Tuple
 
 import netifaces
-import requests
+import requests  # TODO: use aiohttp so that we have fewer libraries
 
-from config import INTERFACES
+import config
 
 
 def update_dynamic_dns(my_ip: str):
-    res = requests.get("https://www.duckdns.org/update", params={
-        "domains": "server-finitech",
-        "token": "f3c961e4-f42f-457f-8afe-961aed9636e7",
-        "ip": my_ip,
-        "verbose": True,
-        "clear": True
-    })
+    res = requests.get(
+        "https://www.duckdns.org/update",
+        params={
+            "domains": config.DUCK_DNS_DOMAINS,
+            "token": config.DUCK_DNS_TOKEN,
+            "ip": my_ip,
+            "verbose": True,
+            "clear": True,
+        },
+    )
     assert res.ok, res
 
 
 def get_ip_interface() -> Tuple[str, str]:
     addresses = None
     interface = None
-    for i in INTERFACES:
+    for i in config.INTERFACES:
         try:
             addresses = netifaces.ifaddresses(i)[netifaces.AF_INET]
             interface = i

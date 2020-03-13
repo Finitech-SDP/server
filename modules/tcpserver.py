@@ -1,5 +1,5 @@
 from typing import Optional, Tuple
-from uuid import uuid4
+
 import modules.handler
 
 
@@ -7,7 +7,6 @@ class App:
     def __init__(self, addr: Tuple[str, int], name: str):
         self.addr = addr
         self.name = name
-
 
 
 class Robot:
