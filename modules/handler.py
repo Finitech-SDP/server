@@ -4,10 +4,8 @@ import json
 import logging
 from typing import Any, Dict, Optional
 
-import websockets
-
 from main import Coordinator
-from modules import planning
+from modules import emitter, planning
 from modules.tcpserver import Robot
 
 TAG_HANDLERS = ["LIST-ROBOTS", "SELECT-ROBOT", "RELAY-ASCII", "AUTO"]
@@ -23,10 +21,10 @@ class State(enum.Enum):
 
 class TCPHandler:
     def __init__(
-        self,
-        reader: asyncio.StreamReader,
-        writer: asyncio.StreamWriter,
-        coordinator: Coordinator,
+            self,
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+            coordinator: Coordinator,
     ):
         self.reader = reader
         self.writer = writer
@@ -41,6 +39,8 @@ class TCPHandler:
         while True:
             try:
                 msg = await self.receive_json_message()
+                if msg is None:
+                    continue
                 await self.handle_message(msg)
             except asyncio.streams.IncompleteReadError:
                 self.state = State.DISCONNECTED
@@ -70,10 +70,10 @@ class TCPHandler:
 
     async def handle_APP_message(self, tag: str, data: Dict[str, Any]):
         if tag in TAG_HANDLERS:
-            handler = getattr(self, f"handle_{tag.replace('-', '_')}")
+            handler = getattr(self, f"handle_APP_{tag.replace('-', '_')}")
             await handler(data)
 
-    async def handle_APP_LIST_ROBOTS(self):
+    async def handle_APP_LIST_ROBOTS(self, data: Dict[str, Any]):
         await self.send_json_message(
             {
                 "TAG": "LIST-ROBOTS-RES",
@@ -107,16 +107,10 @@ class TCPHandler:
             )
             return
 
-        # This is an example of emitting websocket events for Theodor
-        for ws in self.coordinator.websockets:
-            try:
-                await ws.send(data["message"] + "\n")
-            except websockets.WebSocketException:
-                logging.exception("WebSocket send exception")
-                continue
-
         await self.robot.handler.send_message(data["message"].encode("ascii"))
         await self.send_json_message({"TAG": "RELAY-ASCII-ACK", "DATA": {}})
+        if data["message"] == "STOP":
+            await emitter.emit("STOPPED")
 
     async def handle_APP_AUTO(self, data: Dict[str, Any]):
         robot_row, robot_col = (
@@ -132,20 +126,30 @@ class TCPHandler:
             )
             return
 
-        deliberate = planning.deliberate(
+        await emitter.emit("PLANNING_STARTED")
+
+        actions = await planning.deliberate(
             (int(robot_row), int(robot_col)), (int(car_row), int(car_col), mode)
         )
+        if actions is None:
+            await emitter.emit("PLANNING_FAILED")
+            return
 
-        async for command in deliberate:
-            if command is None:
-                return
+        await emitter.emit("AUTONOMOUS_ON", {
+            "location": {"row": int(robot_row), "column": int(robot_col)},
+            "pddlPlan": actions,
+        })
+        print("!!!!", actions)
 
+        commands = planning.translate(actions)
+        for command in commands:
             await self.robot.handler.send_message(command)
             msg_maybe = await self.receive_json_message(timeout=6)
             if msg_maybe is not None:
                 await self.handle_message(msg_maybe)
                 return
 
+        await emitter.emit("STANDBY_ON")
         await self.send_json_message({"TAG": "AUTO-ACK", "DATA": {}})
 
     async def handle_ROBOT_message(self, tag: str, data: Dict[str, Any]):
@@ -165,7 +169,6 @@ class TCPHandler:
         self, timeout: Optional[float] = None
     ) -> Optional[Dict[str, Any]]:
         msg = await self.receive_message(timeout)
-
         return json.loads(msg.decode("ascii")) if msg else None
 
     async def receive_message(self, timeout: Optional[float] = None) -> Optional[bytes]:
